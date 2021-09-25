@@ -17,7 +17,7 @@ def search_by_id(cve_id: str):
     """
     data = _request_specific_by_id(cve_id)
     if ('message' in data.keys() and data['message'].contains('Unable to find vuln')) or data['totalResults'] == 0:
-        raise NoDataReceivedError(f"No data for vce with id {cve_id}")
+        raise NoDataReceivedError(f"No data for cve with id {cve_id}")
     else:
         return CveResultList(data)
 
