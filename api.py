@@ -3,7 +3,6 @@ api.py: This file contains functions to query the API of NVD
 """
 
 from datetime import datetime
-import pytz
 import requests
 
 SEARCH_URL_SPECIFIC = 'https://services.nvd.nist.gov/rest/json/cve/1.0'
@@ -28,10 +27,7 @@ def search_by_name_and_date(keyword: str, start_date: datetime = None):
     It raises an error if no result was found else it returns the id and date of the latest cve found.
     """
     data = _request_multi(keyword, start_date)
-    if data['totalResults'] == 0:
-        raise NoDataReceivedError(f"No new data since {start_date} for search with with keyword {keyword}")
-    else:
-        return CveResultList(data)
+    return CveResultList(data)
 
 
 def _request_specific_by_id(cve_id):
@@ -40,12 +36,28 @@ def _request_specific_by_id(cve_id):
 
 
 def _request_multi(keyword: str, start_date: datetime):
+    """
+    build a request for the nvd api, by using date and keyword parameters. Then sends request and returns result as json
+    """
     if start_date is None:
         pars = {'keyword': keyword}
     else:
-        pars = {'keyword': keyword, 'pubStartDate': start_date.strftime("%Y-%m-%dT%00:00:00:000")}
+        pars = {'keyword': keyword, 'pubStartDate': start_date.strftime("%Y-%m-%dT%H:%M:%S:000 UTC-05:00")}
     response = requests.get(url=SEARCH_URL_MULTI, params=pars)
-    return response.json()
+    print(f"requestURL: {response.url}")
+    if response.ok:
+        return response.json()
+    else:
+        raise NoDataReceivedError(f"API call for {keyword}!")
+
+
+def _severity_ranking(cve):
+    """
+    Takes a cve object and returns a number according to the severity of the CVE.
+    This function is meant to be used as helper to be able to rank the cve's by their severity.
+    """
+    severities = {"UNKNOWN": -1, "LOW": 0, "MEDIUM": 1, "HIGH": 2, "CRITICAL": 3}
+    return severities[cve.severity]
 
 
 class Cve:
@@ -67,7 +79,10 @@ class Cve:
         mod_date = datetime.strptime(result_json['lastModifiedDate'], "%Y-%m-%dT%H:%MZ")
         pub_date = datetime.strptime(result_json['publishedDate'], "%Y-%m-%dT%H:%MZ")
         cve_id = result_json['cve']['CVE_data_meta']['ID']
-        severity = result_json['impact']['baseMetricV2']['severity']
+        if result_json['impact'] == {}:
+            severity = "UNKNOWN"
+        else:
+            severity = result_json['impact']['baseMetricV2']['severity']
         return Cve(cve_id, pub_date, mod_date, severity)
 
 
@@ -88,6 +103,18 @@ class CveResultList:
         if self.results is not None:
             return max(self.results, key=lambda x: x.published_date)
 
+    def get_cve_id_list(self):
+        return [cve.cve_id for cve in self.results]
+
+    def get_max_severity(self):
+        """
+        Finds the Cve with the highest severity and returns this severity.
+        Returns None when result-list of cve's is empty.
+        """
+        if not self.results:
+            return None
+        return max(self.results, key=_severity_ranking).severity
+
     def _parse_json(self, json_result):
         """
         This method takes the complete result_json from the api and parse it.
@@ -99,15 +126,6 @@ class CveResultList:
 
 class NoDataReceivedError(Exception):
     def __init__(self, message):
-        super().__init__(f"There was no data received for the vulnerability: \n{message}")
+        super().__init__(f"There was no data received for {message}")
 
-
-if __name__ == "__main__":
-    # test search by ID
-    #test_res = search_by_id('CVE-2015-5611')
-    #print(test_res)
-    # test search by keyword & date
-    test_res_2 = search_by_name_and_date('maple', datetime(year=2017, month=6, day=12, hour=12, second=12, minute=12,
-                                                           tzinfo=pytz.timezone("Europe/Berlin")))
-    print(test_res_2)
 

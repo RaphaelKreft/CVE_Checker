@@ -9,10 +9,11 @@ main.py: uses excel-utils and api to perform following action:
 """
 
 __author__ = "Raphael Kreft"
-__version__ = 0.1
+__version__ = 0.2
 __email__ = "r.kreft@unibas.ch"
 
 import argparse
+import datetime
 
 from api import search_by_name_and_date, NoDataReceivedError
 from excel_utils import read_software_data, dumb_updated_data
@@ -40,14 +41,15 @@ if __name__ == "__main__":
     args = parse_args()
     try:
         # 1st step: Read file to get Software Information
-        data = read_software_data(args.input, args.delimiter, args.excel)
+        data = read_software_data(args.input, args.name_col, args.date_col, args.delimiter, args.excel)
         # 2nd step: For each entry from the file, perform a search for new Cve's
-        for key in data.keys():
+        for i in range(1, len(data)):  # TODO: make more modular -> dynamic handling of column headers
             try:
-                cve = search_by_name_and_date(key).get_latest()
-                if data[key] == "" or cve.published_date > data[key]:
-                    data[key] = cve.published_date
-                    print(f"New cve since last search with keyword {key}!:\n {cve}\n")
+                print(f"Checking {data[i][args.name_col]}...")
+                result = search_by_name_and_date(data[i][args.name_col], data[i][args.date_col])
+                data[i][args.date_col] = datetime.datetime.now()
+                data[i][2] = f"[{len(result.get_cve_id_list())}]-> " + ",".join(result.get_cve_id_list())
+                data[i][3] = result.get_max_severity()
             except IOError as e:
                 print(e)
             except NoDataReceivedError as e:
@@ -57,7 +59,7 @@ if __name__ == "__main__":
         if not args.output:
             args.output = args.input
         # 3rd step: Write back data to a file
-        dumb_updated_data(output_file=args.output, delimiter=args.delimiter, excel=args.excel, software_dict=data)
+        dumb_updated_data(output_file=args.output, software_list=data, delimiter=args.delimiter, excel=args.excel)
     except IOError as e:
         print(e)
         exit()
