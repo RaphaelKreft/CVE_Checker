@@ -14,6 +14,7 @@ __email__ = "r.kreft@unibas.ch"
 
 import argparse
 import datetime
+import logging
 
 from api import search_by_name_and_date, NoDataReceivedError
 from excel_utils import read_software_data, dumb_updated_data
@@ -28,19 +29,27 @@ def parse_args():
     parser.add_argument('-delimiter', '-d', type=str, default=',', help="Separator of data fields in a row. Default "
                                                                         "is ,. Not neccessary when -excel is True")
     parser.add_argument('-output', '-o', type=str, default=False)
-    parser.add_argument('-name_col', '-nc', type=int, default="Name", help="The number of the column that contains "
+    parser.add_argument('-name_col', '-nc', type=int, default=1, help="The number of the column that contains "
                                                                            "the Name of the Software")
-    parser.add_argument('-date_col', '-dc', type=int, default="Last_checked", help="The number of the column that "
+    parser.add_argument('-date_col', '-dc', type=int, default=2, help="The number of the column that "
                                                                                    "contains the date when the last "
                                                                                    "security check was performed")
+    parser.add_argument('-log', '-l', action='store_true', help='activated logging, logs will be stored in logs folder')
     return parser.parse_args()
+
+
+def configure_logger():
+    logging.basicConfig(filename=f'logs/{datetime.datetime.now()}.log', encoding='utf-8', level=logging.DEBUG)
 
 
 if __name__ == "__main__":
     print(f"--- CVE_Checker ---\n-Version: {__version__}\n-By: {__author__}\n-Contact me: {__email__}\n\n")
+    logging.info("Program Start\n")
     args = parse_args()
+    logging.debug("Parsed args!\n")
     try:
         # 1st step: Read file to get Software Information
+        logging.info("Start reading in Data from file")
         data = read_software_data(args.input, args.name_col, args.date_col, args.delimiter, args.excel)
         # 2nd step: For each entry from the file, perform a search for new Cve's
         for i in range(1, len(data)):  # TODO: make more modular -> dynamic handling of column headers

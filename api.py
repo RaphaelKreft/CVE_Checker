@@ -7,7 +7,7 @@ import requests
 
 SEARCH_URL_SPECIFIC = 'https://services.nvd.nist.gov/rest/json/cve/1.0'
 SEARCH_URL_MULTI = 'https://services.nvd.nist.gov/rest/json/cves/1.0'
-
+requests.packages.urllib3.disable_warnings()
 
 def search_by_id(cve_id: str):
     """
@@ -31,7 +31,7 @@ def search_by_name_and_date(keyword: str, start_date: datetime = None):
 
 
 def _request_specific_by_id(cve_id):
-    response = requests.get(url=f'{SEARCH_URL_SPECIFIC}/{cve_id}')
+    response = requests.get(url=f'{SEARCH_URL_SPECIFIC}/{cve_id}', verify=False)
     return response.json()
 
 
@@ -43,7 +43,7 @@ def _request_multi(keyword: str, start_date: datetime):
         pars = {'keyword': keyword}
     else:
         pars = {'keyword': keyword, 'pubStartDate': start_date.strftime("%Y-%m-%dT%H:%M:%S:000 UTC-05:00")}
-    response = requests.get(url=SEARCH_URL_MULTI, params=pars)
+    response = requests.get(url=SEARCH_URL_MULTI, params=pars, verify=False)
     print(f"requestURL: {response.url}")
     if response.ok:
         return response.json()
