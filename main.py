@@ -15,8 +15,9 @@ __email__ = "r.kreft@unibas.ch"
 import argparse
 import datetime
 import logging
+import os
 
-from api import search_by_name_and_date, NoDataReceivedError
+from api import APIError, search_by_name_and_date, APIError
 from excel_utils import read_software_data, dumb_updated_data
 
 
@@ -38,37 +39,48 @@ def parse_args():
     return parser.parse_args()
 
 
-def configure_logger():
-    logging.basicConfig(filename=f'logs/{datetime.datetime.now()}.log', encoding='utf-8', level=logging.DEBUG)
+def configure_logger(logging_level):
+    """
+    Creates a folder named logs and configures basic logger with given loglevel
+    """
+    if not os.path.exists('logs'):
+        os.makedirs('logs')
+    path = f'logs/{datetime.datetime.now()}.log'
+    logging.basicConfig(filename=path, encoding='utf-8', level=logging_level)
+    logging.info(f"Logs are stored into: {path}")
 
 
 if __name__ == "__main__":
     print(f"--- CVE_Checker ---\n-Version: {__version__}\n-By: {__author__}\n-Contact me: {__email__}\n\n")
-    logging.info("Program Start\n")
+    configure_logger(logging.DEBUG)
+    logging.info("Program Start - Parse args...\n")
     args = parse_args()
-    logging.debug("Parsed args!\n")
     try:
         # 1st step: Read file to get Software Information
-        logging.info("Start reading in Data from file")
+        logging.info(f"Start reading in Data from file: {args.input}")
         data = read_software_data(args.input, args.name_col, args.date_col, args.delimiter, args.excel)
         # 2nd step: For each entry from the file, perform a search for new Cve's
-        for i in range(1, len(data)):  # TODO: make more modular -> dynamic handling of column headers
+        for i in range(1, len(data)):
             try:
-                print(f"Checking {data[i][args.name_col]}...")
+                logging.info(f"Checking {data[i][args.name_col]}...")
+                # send query and save result
                 result = search_by_name_and_date(data[i][args.name_col], data[i][args.date_col])
                 data[i][args.date_col] = datetime.datetime.now()
                 data[i][2] = f"[{len(result.get_cve_id_list())}]-> " + ",".join(result.get_cve_id_list())
                 data[i][3] = result.get_max_severity()
             except IOError as e:
-                print(e)
-            except NoDataReceivedError as e:
-                print(e)
+                logging.error(e)
+            except APIError as e:
+                logging.error(e)
+            finally:
                 continue
         # if no output is specified, overwrite input-file
         if not args.output:
+            logging.info("As no outpufile is given: Overwrite Inputfile!")
             args.output = args.input
         # 3rd step: Write back data to a file
+        logging.info(f"Write results to {args.output}")
         dumb_updated_data(output_file=args.output, software_list=data, delimiter=args.delimiter, excel=args.excel)
     except IOError as e:
-        print(e)
+        logging.error(e)
         exit()

@@ -4,9 +4,12 @@ api.py: This file contains functions to query the API of NVD
 
 from datetime import datetime
 import requests
+import logging
 
 SEARCH_URL_SPECIFIC = 'https://services.nvd.nist.gov/rest/json/cve/1.0'
 SEARCH_URL_MULTI = 'https://services.nvd.nist.gov/rest/json/cves/1.0'
+
+logging.warning("URL3LIB - Warnings are disabled!")
 requests.packages.urllib3.disable_warnings()
 
 def search_by_id(cve_id: str):
@@ -16,7 +19,7 @@ def search_by_id(cve_id: str):
     """
     data = _request_specific_by_id(cve_id)
     if ('message' in data.keys() and data['message'].contains('Unable to find vuln')) or data['totalResults'] == 0:
-        raise NoDataReceivedError(f"No data for cve with id {cve_id}")
+        raise APIError(f"No data for cve with id {cve_id}. (resultcount = 0)")
     else:
         return CveResultList(data)
 
@@ -44,11 +47,11 @@ def _request_multi(keyword: str, start_date: datetime):
     else:
         pars = {'keyword': keyword, 'pubStartDate': start_date.strftime("%Y-%m-%dT%H:%M:%S:000 UTC-05:00")}
     response = requests.get(url=SEARCH_URL_MULTI, params=pars, verify=False)
-    print(f"requestURL: {response.url}")
+    logging.info(f"requestURL: {response.url}")
     if response.ok:
         return response.json()
     else:
-        raise NoDataReceivedError(f"API call for {keyword}!")
+        raise APIError(f"API call for {keyword} -> No answer from API!")
 
 
 def _severity_ranking(cve):
@@ -96,6 +99,12 @@ class CveResultList:
         if json_result is not None:
             self._parse_json(json_result)
 
+    def __init__(self, results):
+        """
+        Constructor for directly storing results. Used when adding.
+        """
+        self.results = results
+
     def get_latest(self):
         """
         This method returns the most current CVE from the list of results
@@ -122,9 +131,20 @@ class CveResultList:
         self.num_results = json_result["totalResults"]
         for cve_json in json_result["result"]["CVE_Items"]:
             self.results.append(Cve.result_to_cve(cve_json))
+    
+    def __add__(self, other):
+        """
+        Adding up Instances of this class means bulding a union of the result lists.
+        This union will be saved in self object
+        """
+        merged_results = self.results
+        for o in other.results:
+            if o.cve_id not in self.get_cve_id_list():
+                merged_results.append(o)
+        return CveResultList(merged_results)
 
 
-class NoDataReceivedError(Exception):
+class APIError(Exception):
     def __init__(self, message):
         super().__init__(f"There was no data received for {message}")
 
