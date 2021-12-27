@@ -1,5 +1,6 @@
 import os
 import csv
+import logging
 
 from openpyxl import Workbook, load_workbook
 from openpyxl.utils import get_column_letter
@@ -9,6 +10,8 @@ from openpyxl.worksheet.table import Table, TableStyleInfo
 This file contains methods to read and write from/to csv and excel files. they dump and try to read a so
 called software-dictionary which contains the following fields: key=swName, value=date_of_last_check
 """
+
+logger = logging.getLogger('root')
 
 
 def table_to_array(table):

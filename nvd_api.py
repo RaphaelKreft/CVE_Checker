@@ -3,10 +3,9 @@ nvd_api.py: This file contains functions to query the REST API of NVD for CVE
 """
 
 from datetime import datetime, timedelta
+import functools
 import requests
 import logging
-
-logger = logging.getLogger("logger")
 
 logging.warning("URL3LIB - Warnings are disabled!")
 requests.packages.urllib3.disable_warnings()
@@ -46,12 +45,13 @@ class NvdApi:
             my_delta = now - curr_date
         ranges.append((curr_date, now))
         # perform queries
-        logger.debug(f"After processing, ranges looks like: {ranges}")
+        logging.debug(f"{keyword.upper()} -- After processing, ranges has len {len(ranges)}")
         results = []
         for start, end in ranges:
-            results.append(self._name_date_query(keyword, start, end))
-        logger.debug(f"After performing queries, results looks like: {results}")
-        return sum(results)
+            results.append(CveResultList(self._name_date_query(keyword, start, end)))
+        logging.debug(f"{keyword.upper()} -- After performing queries, results has len {len(results)}")
+        res_list = functools.reduce(CveResultList.add, results, CveResultList([]))
+        return res_list
 
     def _request_specific_by_id(self, cve_id: str):
         """
@@ -69,7 +69,7 @@ class NvdApi:
         pars = {'keyword': keyword, 'pubStartDate': start_date.strftime("%Y-%m-%dT%H:%M:%S:000 UTC-05:00"),
                 'pubEndDate': end_date.strftime("%Y-%m-%dT%H:%M:%S:000 UTC-05:00")}
         response = requests.get(url=self.SEARCH_URL_MULTI, params=pars, verify=False)
-        logger.debug(f"requestURL: {response.url}")
+        logging.debug(f"requestURL: {response.url}")
         if response.ok:
             logging.debug(f"Request for {keyword}, start: {start_date.strftime('%Y-%m-%dT%H:%M:%S')} , end: "
                           f"{end_date.strftime('%Y-%m-%dT%H:%M:%S')} is okay!")
@@ -114,16 +114,13 @@ class CveResultList:
     """
 
     def __init__(self, json_result):
-        self.results = []
-        self.num_results = None
-        if json_result is not None:
-            self._parse_json(json_result)
-
-    def __init__(self, results: list):
-        """
-        Constructor for directly storing results. Used when adding.
-        """
-        self.results = results
+        if type(json_result) is list:
+            self.results = json_result
+        else:
+            self.results = []
+            self.num_results = None
+            if json_result is not None:
+                self._parse_json(json_result)
 
     def get_latest(self):
         """
@@ -155,14 +152,15 @@ class CveResultList:
         for cve_json in json_result["result"]["CVE_Items"]:
             self.results.append(Cve.result_to_cve(cve_json))
 
-    def __add__(self, other):
+    @staticmethod
+    def add(first, other):
         """
         Adding up Instances of this class means bulding a union of the result lists.
         This union will be saved in self object
         """
-        merged_results = self.results
+        merged_results = first.results
         for o in other.results:
-            if o.cve_id not in self.get_cve_id_list():
+            if o.cve_id not in first.get_cve_id_list():
                 merged_results.append(o)
         return CveResultList(merged_results)
 
@@ -184,4 +182,4 @@ class APIError(Exception):
 
     def __init__(self, message):
         super().__init__(f"APIError: {message}")
-        logger.error(f"APIError: {message}")
+        logging.error(f"APIError: {message}")

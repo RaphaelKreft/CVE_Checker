@@ -15,7 +15,7 @@ LOGGING_CONFIG = {
     },
     'handlers': {
         'console': {
-            'level': 'INFO',
+            'level': 'DEBUG',
             'formatter': 'consolefmt',
             'class': 'logging.StreamHandler',
             'stream': 'ext://sys.stdout',  # Default is stderr
@@ -23,7 +23,7 @@ LOGGING_CONFIG = {
         'file': {
             'level': 'DEBUG',
             'formatter': 'filefmt',
-            'class': 'logging.FileHandler',
+            'class': 'logging.handlers.RotatingFileHandler',
             'filename': f'logs/{datetime.datetime.now().strftime("%Y%m%d_%H%M%S")}.log',
         },
     },
@@ -32,6 +32,6 @@ LOGGING_CONFIG = {
             'handlers': ['file', 'console'],
             'level': 'DEBUG',
             'propagate': False
-        }
+        },
     }
 }
