@@ -17,8 +17,18 @@ import datetime
 import logging
 import os
 
-from api import APIError, search_by_name_and_date, APIError
+from nvd_api import APIError, NvdApi
 from excel_utils import read_software_data, dumb_updated_data
+
+
+# configure logger
+if not os.path.exists('logs'):
+    os.makedirs('logs')
+logging.basicConfig(filename=f'logs/{datetime.datetime.now().strftime("%Y%m%d_%H%M%S")}.log',
+                    encoding='utf-8',
+                    level=logging.INFO,
+                    format='[%(asctime)s] {%(pathname)s:%(lineno)d} %(levelname)s - %(message)s',
+                    datefmt='%H:%M:%S')
 
 
 def parse_args():
@@ -31,30 +41,18 @@ def parse_args():
                                                                         "is ,. Not neccessary when -excel is True")
     parser.add_argument('-output', '-o', type=str, default=False)
     parser.add_argument('-name_col', '-nc', type=int, default=1, help="The number of the column that contains "
-                                                                           "the Name of the Software")
+                                                                      "the Name of the Software")
     parser.add_argument('-date_col', '-dc', type=int, default=2, help="The number of the column that "
-                                                                                   "contains the date when the last "
-                                                                                   "security check was performed")
-    parser.add_argument('-log', '-l', action='store_true', help='activated logging, logs will be stored in logs folder')
+                                                                      "contains the date when the last "
+                                                                      "security check was performed")
     return parser.parse_args()
-
-
-def configure_logger(logging_level):
-    """
-    Creates a folder named logs and configures basic logger with given loglevel
-    """
-    if not os.path.exists('logs'):
-        os.makedirs('logs')
-    path = f'logs/{datetime.datetime.now()}.log'
-    logging.basicConfig(filename=path, encoding='utf-8', level=logging_level)
-    logging.info(f"Logs are stored into: {path}")
 
 
 if __name__ == "__main__":
     print(f"--- CVE_Checker ---\n-Version: {__version__}\n-By: {__author__}\n-Contact me: {__email__}\n\n")
-    configure_logger(logging.DEBUG)
     logging.info("Program Start - Parse args...\n")
     args = parse_args()
+    nvdApi = NvdApi()
     try:
         # 1st step: Read file to get Software Information
         logging.info(f"Start reading in Data from file: {args.input}")
@@ -64,23 +62,21 @@ if __name__ == "__main__":
             try:
                 logging.info(f"Checking {data[i][args.name_col]}...")
                 # send query and save result
-                result = search_by_name_and_date(data[i][args.name_col], data[i][args.date_col])
+                result = nvdApi.search_by_name_and_date(data[i][args.name_col], data[i][args.date_col])
                 data[i][args.date_col] = datetime.datetime.now()
                 data[i][2] = f"[{len(result.get_cve_id_list())}]-> " + ",".join(result.get_cve_id_list())
                 data[i][3] = result.get_max_severity()
-            except IOError as e:
-                logging.error(e)
             except APIError as e:
-                logging.error(e)
+                pass
             finally:
                 continue
         # if no output is specified, overwrite input-file
         if not args.output:
-            logging.info("As no outpufile is given: Overwrite Inputfile!")
+            logging.warning("As no outfile is given: Overwrite Inputfile!")
             args.output = args.input
         # 3rd step: Write back data to a file
         logging.info(f"Write results to {args.output}")
         dumb_updated_data(output_file=args.output, software_list=data, delimiter=args.delimiter, excel=args.excel)
     except IOError as e:
-        logging.error(e)
+        logging.critical(f"IOError: {e}")
         exit()
