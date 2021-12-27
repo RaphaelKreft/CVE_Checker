@@ -6,6 +6,8 @@ from datetime import datetime, timedelta
 import requests
 import logging
 
+logger = logging.getLogger("logger")
+
 logging.warning("URL3LIB - Warnings are disabled!")
 requests.packages.urllib3.disable_warnings()
 
@@ -44,9 +46,11 @@ class NvdApi:
             my_delta = now - curr_date
         ranges.append((curr_date, now))
         # perform queries
+        logger.debug(f"After processing, ranges looks like: {ranges}")
         results = []
         for start, end in ranges:
             results.append(self._name_date_query(keyword, start, end))
+        logger.debug(f"After performing queries, results looks like: {results}")
         return sum(results)
 
     def _request_specific_by_id(self, cve_id: str):
@@ -65,8 +69,10 @@ class NvdApi:
         pars = {'keyword': keyword, 'pubStartDate': start_date.strftime("%Y-%m-%dT%H:%M:%S:000 UTC-05:00"),
                 'pubEndDate': end_date.strftime("%Y-%m-%dT%H:%M:%S:000 UTC-05:00")}
         response = requests.get(url=self.SEARCH_URL_MULTI, params=pars, verify=False)
-        logging.info(f"requestURL: {response.url}")
+        logger.debug(f"requestURL: {response.url}")
         if response.ok:
+            logging.debug(f"Request for {keyword}, start: {start_date.strftime('%Y-%m-%dT%H:%M:%S')} , end: "
+                          f"{end_date.strftime('%Y-%m-%dT%H:%M:%S')} is okay!")
             return response.json()
         else:
             raise APIError(f"API call for {keyword} not 'ok': {response.json()} \n\n",)
@@ -178,4 +184,4 @@ class APIError(Exception):
 
     def __init__(self, message):
         super().__init__(f"APIError: {message}")
-        logging.error(f"APIError: {message}")
+        logger.error(f"APIError: {message}")
