@@ -18,8 +18,8 @@ import os
 import sys
 import datetime
 
-from nvd_api import APIError, NvdApi
-from excel_utils import read_software_data, dumb_updated_data
+from src.api.nvd_api import APIError, NvdApi
+from src.io.excel_utils import read_software_data, dumb_updated_data, to_url_format
 from logconf import LOGGING_CONFIG
 
 # configure logging
@@ -59,14 +59,27 @@ if __name__ == "__main__":
             try:
                 sys.stdout.flush()
                 logging.info(f"Checking {data[i][args.name_col]}...")
+                # check if there was a previous check, if not search for last 5 years
+                if not data[i][args.date_col]:
+                    data[i][args.date_col] = datetime.datetime.now() - datetime.timedelta(days=365*5)
                 # send query and save result
                 result = nvdApi.search_by_name_and_date(data[i][args.name_col], data[i][args.date_col])
-                logging.info(f"Result is TEST")
+                # update date -> last vuln check
                 data[i][args.date_col] = datetime.datetime.now()
-                data[i][2] = f"[{len(result.get_cve_id_list())}]-> " + ",".join(result.get_cve_id_list())
-                data[i][3] = result.get_max_severity()
+                # get maximum severity
+                data[i][2] = result.get_max_severity()
+                # safe results
+                results = []
+                for cve_id, url in result.get_cve_id_list(make_urls=True):
+                    if url is None:
+                        results.append(str(cve_id))
+                    else:
+                        logging.info("use url")
+                        results.append(to_url_format(cve_id, url))
+                data[i][3] = f"[{len(result.get_cve_id_list())}]->" + ",".join(results)
             except APIError as e:
-                print("api error")
+                logging.warning(f"Error with API -> {e}")
+                data[i][3] = "ERROR!"
             finally:
                 continue
         # if no output is specified, overwrite input-file
@@ -77,5 +90,5 @@ if __name__ == "__main__":
         logging.info(f"Write results to {args.output}")
         dumb_updated_data(output_file=args.output, software_list=data, delimiter=args.delimiter, excel=args.excel)
     except IOError as e:
-        logging.critical(f"IOError: {e}")
+        logging.critical(f"IOError while read/write Software-data: {e}")
         exit()

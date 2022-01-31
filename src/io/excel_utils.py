@@ -14,6 +14,14 @@ called software-dictionary which contains the following fields: key=swName, valu
 logger = logging.getLogger('root')
 
 
+def to_url_format(text: str, url: str) -> str:
+    """
+    Takes a text and Url. returns a string that represents a link in excel-format,
+    so that it is shown as such in an excel worksheet.
+    """
+    return '=HYPERLINK("{}"; "{}")'.format(url, text)
+
+
 def table_to_array(table):
     """
     Takes a table as pyxl-object and coverts it into an 2D array.
@@ -91,7 +99,7 @@ def dumb_updated_data(output_file, software_list: list, delimiter: str = ",", ex
 
 if __name__ == "__main__":
     # test read of data from excel sheet
-    data = table_to_array(read_software_data("examples/test.xlsx", 0, 1, excel=True))
+    data = table_to_array(read_software_data("../../examples/test.xlsx", 0, 1, excel=True))
     print(data)
     # test dump
     dumb_updated_data("examples/output.xlsx", data, excel=True)

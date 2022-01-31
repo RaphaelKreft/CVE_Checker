@@ -3,17 +3,25 @@ nvd_api.py: This file contains functions to query the REST API of NVD for CVE
 """
 
 from datetime import datetime, timedelta
+from ratelimiter import RateLimiter
 import functools
 import requests
 import logging
 
-logging.warning("URL3LIB - Warnings are disabled!")
-requests.packages.urllib3.disable_warnings()
+#logging.warning("URL3LIB - Warnings are disabled!")
+#requests.packages.urllib3.disable_warnings()
 
 
 class NvdApi:
-    SEARCH_URL_SPECIFIC = 'https://services.nvd.nist.gov/rest/json/cve/1.0'
-    SEARCH_URL_MULTI = 'https://services.nvd.nist.gov/rest/json/cves/1.0'
+    _SEARCH_URL_SPECIFIC = 'https://services.nvd.nist.gov/rest/json/cve/1.0'
+    _SEARCH_URL_MULTI = 'https://services.nvd.nist.gov/rest/json/cves/1.0'
+    DETAIL_VIEW_PREFIX = 'https://nvd.nist.gov/vuln/detail/'
+
+    def __init__(self, api_key=None):
+        self.api_key = api_key
+        self.period = 60    # 60 second period
+        self.max_calls = 100 if api_key else 10
+        self.rate_limiter = RateLimiter(max_calls=self.max_calls, period=self.period)
 
     def search_by_id(self, cve_id: str):
         """
@@ -53,12 +61,23 @@ class NvdApi:
         res_list = functools.reduce(CveResultList.add, results, CveResultList([]))
         return res_list
 
+    def _perform_request(self, url: str, parameters: dict, verify=False):
+        """
+        Performs a get request towards an API while using a rate limiter -
+        """
+        with self.rate_limiter:
+            response = requests.get(url=url, params=parameters, verify=verify)
+            if response.ok:
+                return response.json()
+            else:
+                raise APIError(f"API call for {url} not 'ok' \n\n")
+
     def _request_specific_by_id(self, cve_id: str):
         """
         Request data for a specific CVE-ID, returns the answer json
         """
-        response = requests.get(url=f'{self.SEARCH_URL_SPECIFIC}/{cve_id}', verify=False)
-        return response.json()
+        search_url = f'{self._SEARCH_URL_SPECIFIC}/{cve_id}'
+        return self._perform_request(search_url, parameters={}, verify=False)
 
     def _name_date_query(self, keyword: str, start_date: datetime = None, end_date: datetime = None):
         """
@@ -68,14 +87,10 @@ class NvdApi:
         # if start_date not given, just search for keyword, else include start_date as search paramete
         pars = {'keyword': keyword, 'pubStartDate': start_date.strftime("%Y-%m-%dT%H:%M:%S:000 UTC-05:00"),
                 'pubEndDate': end_date.strftime("%Y-%m-%dT%H:%M:%S:000 UTC-05:00")}
-        response = requests.get(url=self.SEARCH_URL_MULTI, params=pars, verify=False)
-        logging.debug(f"requestURL: {response.url}")
-        if response.ok:
-            logging.debug(f"Request for {keyword}, start: {start_date.strftime('%Y-%m-%dT%H:%M:%S')} , end: "
-                          f"{end_date.strftime('%Y-%m-%dT%H:%M:%S')} is okay!")
-            return response.json()
-        else:
-            raise APIError(f"API call for {keyword} not 'ok': {response.json()} \n\n",)
+        response_json = self._perform_request(url=NvdApi._SEARCH_URL_MULTI, parameters=pars, verify=False)
+        logging.debug(f"Request for {keyword}, start: {start_date.strftime('%Y-%m-%dT%H:%M:%S')} , end: "
+                      f"{end_date.strftime('%Y-%m-%dT%H:%M:%S')} is okay!")
+        return response_json
 
 
 class Cve:
@@ -92,6 +107,22 @@ class Cve:
     def __str__(self):
         return f"CVE: {self.cve_id}\n- published_date: {self.published_date}\n" \
                f"- last_modified: {self.last_modified_date}\n- severity: {self.severity}"
+
+    def get_url(self, check_is_up=False):
+        """
+        This Method assembles an URL for this specific CVE. The URL is checked whether
+        it is reachable or not. If it is reachable, the url is returned, if not just the cve_ID
+        is returned.
+        """
+        url = f"{NvdApi.DETAIL_VIEW_PREFIX}{self.cve_id}"
+        if check_is_up:
+            is_up = requests.head(url).status_code == 200
+            if is_up:
+                return url
+            else:
+                return None
+        else:
+            return url
 
     @staticmethod
     def result_to_cve(result_json):
@@ -129,11 +160,16 @@ class CveResultList:
         if self.results is not None:
             return max(self.results, key=lambda x: x.published_date)
 
-    def get_cve_id_list(self):
+    def get_cve_id_list(self, make_urls=False):
         """
-        Returns a list of all ids of CVE's in the result-list of this instance
+        Returns a List of tuples (CVE-ID, URL). If make_urls is set False,
+        then the method get_url will not be executed but None as placeholder
+        will be inserted.
         """
-        return [cve.cve_id for cve in self.results]
+        if make_urls:
+            return [(cve.cve_id, cve.get_url()) for cve in self.results]
+        else:
+            return [(cve.cve_id, None) for cve in self.results]
 
     def get_max_severity(self):
         """
