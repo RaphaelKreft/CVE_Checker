@@ -14,8 +14,8 @@ import logging.config
 import os
 
 from src.controller import Controller
-from logconf import LOGGING_CONFIG
-from src.model import Database, ModelError
+from config.logconf import LOGGING_CONFIG
+from src.model import ModelError
 
 # configure logging
 if not os.path.exists('logs'):
